@@ -1,0 +1,104 @@
+<modification>
+        <id>OpenCart order tracking number</id>
+        <version>1.0</version>
+        <vqmver>1</vqmver>
+        <author>Alexander Toporkov (toporchillo@gmail.com)</author>
+        <file name="admin/controller/sale/order.php">
+			<operation>
+				<search position="after"><![CDATA[$this->data['shipping_country'] = $order_info['shipping_country'];]]></search>
+				<add><![CDATA[
+			$this->data['track_no'] = $order_info['track_no'];
+				]]></add>
+			</operation>
+			<operation>
+				<search position="before"><![CDATA[public function history() {]]></search>
+				<add><![CDATA[
+	public function set_track_no() {
+		if ($this->request->server['REQUEST_METHOD'] == 'POST') {
+			if ($this->user->hasPermission('modify', 'sale/order')) {
+				$order_id = $this->request->get['order_id'];
+				$track_no = trim($this->request->post['track_no']);
+				$this->load->model('sale/order');
+				$order_info = $this->model_sale_order->getOrder($order_id);
+
+				if ($order_info['track_no'] == $track_no) {
+					return false;
+				}
+				
+				$this->db->query("UPDATE `" . DB_PREFIX . "order` SET track_no='" . $this->db->escape($track_no) . "' WHERE order_id = '" . (int)$order_id . "'");
+
+				$data = array(
+					'order_status_id' => $order_info['order_status_id'],
+					'notify' => false,
+					'comment' => 'Заказу присвоен треккинг-номер: '.$track_no
+				);
+				$this->model_sale_order->addOrderHistory($order_id, $data);
+
+				return true;
+			}
+		}
+		return false;
+	}
+				]]></add>
+			</operation>
+		</file>
+		
+        <file name="admin/model/sale/order.php">
+			<operation>
+				<search position="after" regex="true"><![CDATA[~\'order_id\'\s*=>\s*\$order_query->row\[\'order_id\'\],~i]]></search>
+				<add><![CDATA[
+				'track_no'                => (isset($order_query->row['track_no']) ? $order_query->row['track_no'] : ''),
+				]]></add>
+			</operation>
+		</file>
+
+        <file name="admin/view/template/sale/order_info.tpl">
+			<operation>
+				<search position="after" regex="true"><![CDATA[~<td>\s*<\?php\s+echo\s+\$shipping_method;\s*\?>\s*<\/td>~i]]></search>
+				<add><![CDATA[
+          </tr>
+          <tr>
+            <td>Идентификатор отправления (треккинг-номер):</td>
+            <td><input type="text" name="order_track_no" value="<?php echo $track_no; ?>" size="32" /><button id="set_track_no">OK</button></td>
+				]]></add>
+			</operation>
+			<operation>
+				<search position="before"><![CDATA[<?php echo $footer; ?>]]></search>
+				<add><![CDATA[
+<script type="text/javascript"><!--
+$('#set_track_no').live('click', function() {
+	$.ajax({
+		url: 'index.php?route=sale/order/set_track_no&token=<?php echo $token; ?>&order_id=<?php echo $order_id; ?>',
+		type: 'post',
+		dataType: 'html',
+		data: 'track_no=' + encodeURIComponent($('input[name=\'order_track_no\']').val()),
+		beforeSend: function() {
+			$('.success, .warning').remove();
+			$('#set_track_no').attr('disabled', true);
+			$('#set_track_no').after('<img src="view/image/loading.gif" class="attention_img" alt="" />');
+		},
+		complete: function() {
+			$('#set_track_no').attr('disabled', false);
+			$('.attention_img').remove();
+			$('#tab-shipping').prepend('<div class="success">Идентификатор отправления сохранен!</div>');
+		},
+		success: function(html) {
+		}
+	});
+});
+//--></script> 
+				]]></add>
+			</operation>
+			
+		</file>
+<!--
+        <file name="admin/view/template/sale/order_list.tpl" error="skip">
+			<operation>
+				<search position="after" regex="false"><![CDATA[<td class="right"><?php echo $order['order_id']; ?></td>]]></search>
+				<add><![CDATA[
+				<td class="right"><?php echo $order['track_no']; ?></td>
+				]]></add>
+			</operation>
+		</file>
+-->
+</modification>

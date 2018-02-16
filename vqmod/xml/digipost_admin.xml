@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<modification>
+  <id>api.Digi-Post - ADMIN</id>
+  <version>1.0.0</version>
+  <vqmver>2.2.1</vqmver>
+  <author>api.digi-post.ru</author>
+<file name="admin/view/template/sale/order_info.tpl">
+ <operation>
+	<search position="replace"><![CDATA[<a href="<?php echo $invoice; ?>" target="_blank" class="button"><?php echo $button_invoice; ?></a>]]></search>
+	<add><![CDATA[
+		<?php if ($this->config->get('digipost_status')) { ?>
+			<a href="<?php echo $F7; ?>" target="_blank" class="button">Бланк Ф.7</a><a href="<?php echo $F112; ?>" target="_blank" class="button">Бланк Ф.112</a><a href="<?php echo $F116; ?>" target="_blank" class="button">Бланк Ф.116</a><a href="<?php echo $F107; ?>" target="_blank" class="button">Бланк Ф.107</a><a href="<?php echo $invoice; ?>" target="_blank" class="button"><?php echo $button_invoice; ?></a>
+		<?php } else { ?>
+			<div class="buttons"><a href="<?php echo $invoice; ?>" target="_blank" class="button"><?php echo $button_invoice; ?></a><a href="<?php echo $cancel; ?>" class="button"><?php echo $button_cancel; ?></a></div>
+		<?php } ?>
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="after"><![CDATA[<a href="#tab-history"><?php echo $tab_history; ?></a>]]></search>
+	<add><![CDATA[
+		<?php if ($this->config->get('digipost_status') && $this->config->get('enable_digi_tracking')) { ?>
+		<a href="#tab-digitracker">Отслеживание</a>
+		<?php } ?>
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="before"><![CDATA[<div id="tab-history" class="vtabs-content">]]></search>
+	<add><![CDATA[
+		<?php if ($this->config->get('digipost_status') && $this->config->get('enable_digi_tracking')) { ?>
+		<div id="tab-digitracker" class="vtabs-content">
+		<div id="digitracker"></div>
+		<div class="attention">Информация по отлеживанию посылок предоставляется сервисом <a href="http://api.digi-post.ru" target="_blank">api.digi-post.ru</a>. Благодаря уведомлениям, которые отсылает сервис, вы можете значительно повысить клиентский сервис и сократить количество возвратов. Рекомендуем воспользоваться этой услугой. Услуга доступна при оплате лицензии. Уведомления настраиваются в <a href="https://api.digi-post.ru/user/settings" target="_blank">панели управления</a> на api.digi-post.ru. Для корректной работы услуги данные о сумме, номере и ФИО из заказа будут переданы на наш сервер по защищенному протоколу.
+		
+		<br><br>Введите в поле ниже индентификатор для отслеживания и через время здесь появится информация о движении посылки.</div> 
+		<table class="form">
+			<tr>
+				<td>Почтовый идентификатор:</td>
+				<td><input type="text" name="postcode" value="<?php echo $postcode; ?>" id="postcode" />
+					<a id="button-postcode" class="button">Добавить идентификатор</a>
+				</td>
+			</tr>
+		</table>
+		<div id="dtracker"></div>
+		</div>
+		<?php } ?>
+	 ]]></add>
+ </operation>
+  <operation>
+	<search position="before"><![CDATA[$('#history').load('index.php?route=sale/order/history&token=<?php echo $token; ?>&order_id=<?php echo $order_id; ?>');]]></search>
+	<add><![CDATA[
+		$('#dtracker').load('index.php?route=sale/order/tracking&token=<?php echo $token; ?>&order_id=<?php echo $order_id; ?>');
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="after"><![CDATA[$('#history').load('index.php?route=sale/order/history&token=<?php echo $token; ?>&order_id=<?php echo $order_id; ?>');]]></search>
+	<add><![CDATA[
+	$('#button-postcode').live('click', function() {
+	$.ajax({
+		url: 'index.php?route=sale/order/postcode&token=<?php echo $token; ?>&order_id=<?php echo $order_id; ?>',
+		type: 'post',
+		dataType: 'html',
+		data: 'postcode=' + encodeURIComponent($('input[name=\'postcode\']').val()),
+		beforeSend: function() {
+			$('.success, .warning').remove();
+			$('#button-postcode').attr('disabled', true);
+		},
+		complete: function() {
+			$('#button-postcode').attr('disabled', false);
+			$('.attention').remove();
+		},
+		success: function(html) {
+			$('#digitracker').html(html);
+		}
+	});
+});
+	 ]]></add>
+ </operation>
+</file>
+<file name="admin/controller/sale/order.php">
+ <operation>
+	<search position="before"><![CDATA[$this->template = 'sale/order_info.tpl';]]></search>
+	<add><![CDATA[
+		$username=$this->config->get('digipost_login');
+		$password=$this->config->get('digipost_api_key');
+			
+		$url ='https://api.digi-post.ru/tracking/limits';
+
+		$process = curl_init($url);
+		curl_setopt($process, CURLOPT_SSL_VERIFYPEER, false);
+		curl_setopt($process, CURLOPT_SSL_VERIFYHOST, false);
+		curl_setopt($process, CURLOPT_USERPWD, $username . ":" . $password);
+		curl_setopt($process, CURLOPT_TIMEOUT, 6);
+		curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+		$result = curl_exec($process);
+		curl_close($process);
+
+		$Response = json_decode($result);
+		
+		$this->data['limits'] = $Response;
+	]]></add>
+ </operation>
+
+ <operation>
+	<search position="before"><![CDATA[public function invoice() {]]></search>
+	<add><![CDATA[
+		public function f112() {
+		$this->language->load('sale/order');
+
+		$this->data['title'] = "Печать бланка Ф.112";
+
+		if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+			$this->data['base'] = HTTPS_CATALOG;
+		} else {
+			$this->data['base'] = HTTP_CATALOG;
+		}
+		
+		$this->load->model('sale/order');
+		$this->load->model('setting/setting');
+		
+		$this->data['order_id'] = $this->request->get['order_id'];
+		$this->data['shop_link'] = $this->url->link('sale/order/info', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F7'] = $this->url->link('sale/order/f7', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F112'] = $this->url->link('sale/order/f112', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F116'] = $this->url->link('sale/order/f116', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F107'] = $this->url->link('sale/order/f107', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		
+		$order_info = $this->model_sale_order->getOrder($this->request->get['order_id']);
+		
+		if ($order_info) {
+			$this->data['order_info'] = $order_info;
+		}
+		
+		
+		$this->template = 'sale/f112.tpl';
+
+		$this->response->setOutput($this->render());
+		}
+		
+		public function f116() {
+		$this->language->load('sale/order');
+
+		$this->data['title'] = "Печать бланка Ф.116";
+
+		if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+			$this->data['base'] = HTTPS_CATALOG;
+		} else {
+			$this->data['base'] = HTTP_CATALOG;
+		}
+		
+		$this->load->model('sale/order');
+		$this->load->model('setting/setting');
+		
+		$this->data['order_id'] = $this->request->get['order_id'];
+		$this->data['shop_link'] = $this->url->link('sale/order/info', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F7'] = $this->url->link('sale/order/f7', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F112'] = $this->url->link('sale/order/f112', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F116'] = $this->url->link('sale/order/f116', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F107'] = $this->url->link('sale/order/f107', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		
+		$order_info = $this->model_sale_order->getOrder($this->request->get['order_id']);
+		
+		if ($order_info) {
+			$this->data['order_info'] = $order_info;
+		}
+		
+		
+		$this->template = 'sale/f116.tpl';
+
+		$this->response->setOutput($this->render());
+		}
+		
+		public function f7() {
+		$this->language->load('sale/order');
+
+		$this->data['title'] = "Печать бланка Ф.7";
+
+		if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+			$this->data['base'] = HTTPS_CATALOG;
+		} else {
+			$this->data['base'] = HTTP_CATALOG;
+		}
+		
+		$this->load->model('sale/order');
+		$this->load->model('setting/setting');
+		
+		$this->data['order_id'] = $this->request->get['order_id'];
+		$this->data['shop_link'] = $this->url->link('sale/order/info', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F7'] = $this->url->link('sale/order/f7', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F112'] = $this->url->link('sale/order/f112', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F116'] = $this->url->link('sale/order/f116', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F107'] = $this->url->link('sale/order/f107', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		
+		$order_info = $this->model_sale_order->getOrder($this->request->get['order_id']);
+		
+		if ($order_info) {
+			$this->data['order_info'] = $order_info;
+		}
+		
+		
+		$this->template = 'sale/f7.tpl';
+
+		$this->response->setOutput($this->render());
+		}
+		
+		public function f107() {
+		$this->language->load('sale/order');
+
+		$this->data['title'] = "Печать бланка Ф.107";
+
+		if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+			$this->data['base'] = HTTPS_CATALOG;
+		} else {
+			$this->data['base'] = HTTP_CATALOG;
+		}
+		
+		$this->load->model('sale/order');
+		$this->load->model('setting/setting');
+		
+		$this->data['order_id'] = $this->request->get['order_id'];
+		$this->data['shop_link'] = $this->url->link('sale/order/info', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F7'] = $this->url->link('sale/order/f7', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F112'] = $this->url->link('sale/order/f112', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F116'] = $this->url->link('sale/order/f116', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F107'] = $this->url->link('sale/order/f107', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		
+		$order_info = $this->model_sale_order->getOrder($this->request->get['order_id']);
+		
+		if ($order_info) {
+			$this->data['order_info'] = $order_info;
+		}
+		
+		$product_data = array();
+
+		$products = $this->model_sale_order->getOrderProducts($this->request->get['order_id']);
+
+		foreach ($products as $product) {
+			$option_data = array();
+		
+			$options = $this->model_sale_order->getOrderOptions($this->request->get['order_id'], $product['order_product_id']);
+
+			foreach ($options as $option) {
+				if ($option['type'] != 'file') {
+					$value = $option['value'];
+				} else {
+					$value = utf8_substr($option['value'], 0, utf8_strrpos($option['value'], '.'));
+				}
+
+				$option_data[] = array(
+					'name'  => $option['name'],
+					'value' => $value
+					);
+			}
+
+			$product_data[] = array(
+				'title'     => $product['name'],
+				'model'    => $product['model'],
+				'option'   => $option_data,
+				'quantity' => $product['quantity'],
+				'price'    => $product['price'],
+				'full_total_price'    => $product['total']
+					);
+		}
+		
+		$this->data['products'] = $product_data;
+		
+		$this->template = 'sale/f107.tpl';
+
+		$this->response->setOutput($this->render());
+		}
+		
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="before"><![CDATA[$this->data['invoice'] = $this->url->link('sale/order/invoice', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');]]></search>
+	<add><![CDATA[
+		$this->data['F7'] = $this->url->link('sale/order/f7', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F112'] = $this->url->link('sale/order/f112', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F116'] = $this->url->link('sale/order/f116', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+		$this->data['F107'] = $this->url->link('sale/order/f107', 'token=' . $this->session->data['token'] . '&order_id=' . (int)$this->request->get['order_id'], 'SSL');
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="before"><![CDATA[$this->load->model('sale/customer');]]></search>
+	<add><![CDATA[
+		if (isset($this->request->post['postcode'])) {
+			$this->data['postcode'] = $this->request->post['postcode'];
+		} elseif (!empty($order_info)) {
+			$this->data['postcode'] = $order_info['postcode'];
+		} else {
+			$this->data['postcode'] = '';
+		}
+	 ]]></add>
+ </operation>
+  <operation>
+	<search position="before"><![CDATA[public function history() {]]></search>
+	<add><![CDATA[
+		public function postcode() {
+		$this->language->load('sale/order');
+
+		$this->data['error'] = '';
+		$this->data['success'] = '';
+
+		$this->load->model('sale/order');
+
+		if ($this->request->server['REQUEST_METHOD'] == 'POST') {
+			if (!$this->user->hasPermission('modify', 'sale/order')) {
+				$this->data['error'] = $this->language->get('error_permission');
+			}
+
+			if (!$this->data['error']) {
+				$result = $this->model_sale_order->addOrderPostcode($this->request->get['order_id'], $this->request->post);
+				
+				if ($result->error == 0) {
+					echo "<div class=\"success\">".$result->message." Вскоре здесь появится информация о движении этого отправления.</div>";
+				} else {
+					echo "<div class=\"warning\">".$result->message."</div>";
+				}
+			}
+		}
+	}
+	public function tracking() {
+		$this->language->load('sale/order');
+
+		$this->data['error'] = '';
+		$this->data['success'] = '';
+		
+		$this->load->model('sale/order');
+		
+		$this->data['text_no_results'] = $this->language->get('text_no_results');
+		
+		$result = $this->model_sale_order->getPostcodeTracking($this->request->get['order_id']);
+		
+		$this->data['tracking_history'] = $result;
+
+		$this->template = 'sale/tracking_history.tpl';
+
+		$this->response->setOutput($this->render());
+	}
+	 ]]></add>
+ </operation>
+</file>
+
+<file name="admin/model/sale/order.php">
+ <operation>
+	<search position="before"><![CDATA['order_id'                => $order_query->row['order_id'],]]></search>
+	<add><![CDATA[
+		'postcode'                => $order_query->row['postcode'],
+	 ]]></add>
+ </operation>
+ <operation>
+	<search position="before"><![CDATA[public function addOrderHistory($order_id, $data) {]]></search>
+	<add><![CDATA[
+		public function getPostcodeTracking($order_id) {
+			$order_info = $this->getOrder($order_id);
+			
+			$username=$this->config->get('digipost_login');
+			$password=$this->config->get('digipost_api_key');
+			
+			if ($order_info['postcode'] == '' ) {
+				return 0;
+				die();
+			}
+			
+			$url ='https://api.digi-post.ru/tracking?mode=track';
+			$Request=$url.'&postcode='.$order_info['postcode'];
+
+			$process = curl_init($Request);
+			curl_setopt($process, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($process, CURLOPT_SSL_VERIFYHOST, false);
+			curl_setopt($process, CURLOPT_USERPWD, $username . ":" . $password);
+			curl_setopt($process, CURLOPT_TIMEOUT, 6);
+			curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+			$result = curl_exec($process);
+			curl_close($process);
+
+			$Response = json_decode($result);
+			
+			return $Response;
+
+		}
+	
+		public function addOrderPostcode($order_id, $data) {
+			$this->db->query("UPDATE `" . DB_PREFIX . "order` SET postcode = '" . (int)$data['postcode'] . "' WHERE order_id = '" . (int)$order_id . "'");
+		
+			$order_info = $this->getOrder($order_id);
+			
+			$username=$this->config->get('digipost_login');
+			$password=$this->config->get('digipost_api_key');
+
+			$url ='https://api.digi-post.ru/tracking?mode=addtrack';
+			
+			$fields = array(
+				'postcode' => (int)$data['postcode'],
+				'order_id' => (int)$order_id,
+				'client_name' => $order_info['firstname'],
+				'client_surname' => $order_info['lastname'],
+				'client_phone' => $order_info['telephone'],
+				'client_email' => $order_info['email'],
+			);
+			
+			$field_string = http_build_query($fields);
+			
+			$process = curl_init($url);
+			curl_setopt($process, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($process, CURLOPT_SSL_VERIFYHOST, false);
+			curl_setopt($process, CURLOPT_USERPWD, $username . ":" . $password);
+			curl_setopt($process, CURLOPT_TIMEOUT, 6);
+			curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+			curl_setopt($process, CURLOPT_POST, true);
+			curl_setopt($process, CURLOPT_POSTFIELDS, $field_string);
+			$result = curl_exec($process);
+			curl_close($process);
+
+			$Response = json_decode($result);
+			
+			return $Response;
+		}
+	 ]]></add>
+ </operation>
+</file>
+<file name="admin/controller/common/home.php">
+ <operation>
+	<search position="before"><![CDATA[$results = $this->model_sale_order->getOrders($data);]]></search>
+	<add><![CDATA[
+		$username=$this->config->get('digipost_login');
+		$password=$this->config->get('digipost_api_key');
+			
+		$url ='https://api.digi-post.ru/tracking/limits';
+
+		$process = curl_init($url);
+		curl_setopt($process, CURLOPT_SSL_VERIFYPEER, false);
+		curl_setopt($process, CURLOPT_SSL_VERIFYHOST, false);
+		curl_setopt($process, CURLOPT_USERPWD, $username . ":" . $password);
+		curl_setopt($process, CURLOPT_TIMEOUT, 6);
+		curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+		$result = curl_exec($process);
+		curl_close($process);
+
+		$Response = json_decode($result);
+		
+		$this->data['limits'] = $Response;
+	 ]]></add>
+ </operation>
+</file>
+<file name="admin/view/template/common/home.tpl">
+ <operation>
+	<search position="after" offset="1"><![CDATA[<td><?php echo $total_affiliate_approval; ?></td>]]></search>
+	<add><![CDATA[
+		<tr>
+			<td>Тариф на api.digi-post.ru:</td>
+			<td><a target="_blank" title="изменить" href="https://api.digi-post.ru/invoice"><?php echo $limits->message->plan_name;?></a></td>
+		</tr>
+		<tr>
+			<td>Отслеживается треков (в месяц):</td>
+			<td><?php echo $limits->message->tracks_added;?>/<?php echo $limits->message->tracks_limit;?></td>
+		</tr>
+		<tr>
+			<td>Напечатано бланков (в сутки):</td>
+			<td><?php echo $limits->message->blanks_left;?>/<?php echo $limits->message->blanks_limit;?></td>
+		</tr>
+	 ]]></add>
+ </operation>
+</file>
+
+</modification>
